@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}PYG - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Estado de Resultado (PYG) — {{ "%02d"|format(month) }}-{{ year }}</h2>
+  {% if summary %}
+  <p style="background:#34495e; color:#f1c40f; padding:0.5rem; text-align:center; margin:1rem 0;">
+    RESULTADO NETO MES: {{ "{:,.0f}".format(summary.neto).replace(",", ".") }}
+  </p>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr><th>Rubro (N1)</th><th class="num">Monto</th></tr>
+    </thead>
+    <tbody>
+      {% for _, row in grouped.iterrows() %}
+      <tr>
+        <td>{{ row.detalle_n1 }}</td>
+        <td class="num">{{ row.monto_fmt }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="2" style="text-align:center; color:#888;">No hay datos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

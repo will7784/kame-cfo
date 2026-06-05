@@ -3,6 +3,7 @@ import re
 import pandas as pd
 from flask import Blueprint, request, render_template, send_file, flash, redirect, url_for, abort
 from flask_login import login_required
+from sqlalchemy import text
 from app import db
 from models.company import Company
 from models.account_review import AccountReview
@@ -356,7 +357,7 @@ def delete_review(review_id):
     return redirect(url_for("reports.list_reviews", company_id=cid))
 
 
-# ---------- INFORMES (placeholder para EESS/PYG/Ventas) ----------
+# ---------- INFORMES EESS / PYG / VENTAS ----------
 
 @bp.route("/reports/informes", methods=["GET"])
 @login_required
@@ -367,4 +368,144 @@ def report_informes():
         return redirect(url_for("main.dashboard"))
     company = _get_company(company_id)
     companies = Company.query.order_by(Company.name).all()
-    return render_template("reports/informes.html", company=company, companies=companies)
+
+    # Periodos disponibles
+    from datetime import date
+    periods = []
+    try:
+        p_df = pd.read_sql(text("""
+            SELECT DISTINCT SUBSTR(fecha, 1, 4) AS y, SUBSTR(fecha, 6, 2) AS m
+            FROM ledger_entries
+            WHERE company_id = :cid AND COALESCE(TRIM(fecha), '') <> ''
+            ORDER BY y DESC, m DESC
+        """), db.engine, params={"cid": company_id})
+        for _, r in p_df.iterrows():
+            try:
+                y, m = int(r["y"]), int(r["m"])
+                if 1900 < y < 2100 and 1 <= m <= 12:
+                    periods.append((y, m))
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    return render_template("reports/informes.html", company=company, companies=companies, periods=periods)
+
+
+@bp.route("/reports/eess", methods=["GET"])
+@login_required
+def report_eess():
+    company_id = request.args.get("company_id", type=int)
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    if not company_id or not year or not month:
+        flash("Selecciona empresa y período", "warning")
+        return redirect(url_for("reports.report_informes", company_id=company_id))
+    company = _get_company(company_id)
+
+    from models.classification import CompanyClassification
+    cf = pd.read_sql(
+        CompanyClassification.query.filter_by(company_id=company_id, reporte="EESS").statement,
+        db.engine
+    )
+    if cf.empty:
+        flash("No hay clasificación EESS cargada para esta empresa", "warning")
+        return redirect(url_for("reports.report_informes", company_id=company_id))
+
+    from datetime import date
+    end_iso = date(year, month, 1).isoformat()[:8] + str(__import__('calendar').monthrange(year, month)[1])
+    bal = query_eess(company_id, end_iso)
+    if bal.empty:
+        flash("No hay datos contables para ese período", "warning")
+        return redirect(url_for("reports.report_informes", company_id=company_id))
+
+    work = cf.merge(bal, how="left", on="cuenta")
+    work["saldo"] = pd.to_numeric(work["saldo"], errors="coerce").fillna(0.0)
+    work["detalle_n1"] = work.get("detalle_n1", "").astype(str).str.strip()
+    work["detalle_n2"] = work.get("detalle_n2", "").astype(str).str.strip()
+
+    # Agrupar por detalle_n1
+    grouped = work.groupby("detalle_n1", dropna=False)["saldo"].sum().reset_index()
+    grouped = grouped[grouped["detalle_n1"] != ""]
+    grouped["saldo_fmt"] = grouped["saldo"].apply(lambda x: _fmt_miles(x))
+
+    pyg_ref = query_pyg_ytd(company_id, end_iso)
+    total_activo = float(grouped[grouped["detalle_n1"].str.contains("activo", case=False, na=False)]["saldo"].sum())
+    total_pasivo = float(grouped[grouped["detalle_n1"].str.contains("pasivo", case=False, na=False)]["saldo"].sum())
+    total_patrimonio = float(grouped[grouped["detalle_n1"].str.contains("patrimonio", case=False, na=False)]["saldo"].sum()) + pyg_ref
+
+    summary = {
+        "activo": total_activo,
+        "pasivo": total_pasivo,
+        "patrimonio": total_patrimonio,
+        "pyg_ref": pyg_ref,
+        "cuadre": total_activo - (total_pasivo + total_patrimonio),
+    }
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/eess.html", grouped=grouped, company=company, companies=companies,
+                           year=year, month=month, summary=summary)
+
+
+@bp.route("/reports/pyg", methods=["GET"])
+@login_required
+def report_pyg():
+    company_id = request.args.get("company_id", type=int)
+    year = request.args.get("year", type=int)
+    month = request.args.get("month", type=int)
+    if not company_id or not year or not month:
+        flash("Selecciona empresa y período", "warning")
+        return redirect(url_for("reports.report_informes", company_id=company_id))
+    company = _get_company(company_id)
+
+    from models.classification import CompanyClassification
+    cf = pd.read_sql(
+        CompanyClassification.query.filter_by(company_id=company_id, reporte="PYG").statement,
+        db.engine
+    )
+    if cf.empty:
+        flash("No hay clasificación PYG cargada para esta empresa", "warning")
+        return redirect(url_for("reports.report_informes", company_id=company_id))
+
+    from datetime import date
+    start_iso = date(year, month, 1).isoformat()
+    end_iso = date(year, month, __import__('calendar').monthrange(year, month)[1]).isoformat()
+    bal = query_pyg(company_id, start_iso, end_iso)
+    if bal.empty:
+        flash("No hay movimientos en ese mes", "warning")
+        return redirect(url_for("reports.report_informes", company_id=company_id))
+
+    work = cf.merge(bal, how="left", on="cuenta")
+    work["monto"] = pd.to_numeric(work["monto"], errors="coerce").fillna(0.0)
+    work["detalle_n1"] = work.get("detalle_n1", "").astype(str).str.strip()
+    work["detalle_n2"] = work.get("detalle_n2", "").astype(str).str.strip()
+
+    grouped = work.groupby("detalle_n1", dropna=False)["monto"].sum().reset_index()
+    grouped = grouped[grouped["detalle_n1"] != ""]
+    grouped["monto_fmt"] = grouped["monto"].apply(lambda x: _fmt_miles(x))
+
+    neto = float(grouped["monto"].sum())
+    summary = {"neto": neto}
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/pyg.html", grouped=grouped, company=company, companies=companies,
+                           year=year, month=month, summary=summary)
+
+
+@bp.route("/reports/pendientes/<cuenta>", methods=["GET"])
+@login_required
+def report_pendientes_cuenta(cuenta):
+    company_id = request.args.get("company_id", type=int)
+    fecha_corte = request.args.get("fecha_corte", "").strip()
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    if not fecha_corte:
+        from datetime import datetime
+        fecha_corte = datetime.now().strftime("%Y-%m-%d")
+    df = query_pendientes_cuenta(company_id, cuenta, fecha_corte)
+    summary = None
+    if not df.empty:
+        summary = {"saldo": float(df["Saldo Pendiente"].sum())}
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/pendientes.html", df=df, cuenta=cuenta, company=company,
+                           companies=companies, fecha_corte=fecha_corte, summary=summary)

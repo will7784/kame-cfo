@@ -209,3 +209,72 @@ def query_pendientes_cuenta(company_id: int, cuenta: str, fecha_corte: str) -> p
     ORDER BY ficha, razon_social
     """
     return pd.read_sql(text(sql), db.engine, params={"cid": company_id, "cuenta": cuenta, "fecha": fecha_corte})
+
+
+# ---------- INFORMES EESS / PYG ----------
+
+def query_eess(company_id: int, end_iso: str) -> pd.DataFrame:
+    """Saldos acumulados por cuenta hasta end_iso para EESS."""
+    sql = f"""
+    WITH x AS (
+        SELECT l.*, {_sql_fecha_eff('l')} AS fecha_eff
+        FROM ledger_entries l
+        WHERE l.company_id = :cid
+    )
+    SELECT
+        TRIM(cuenta) AS cuenta,
+        COALESCE(MAX(NULLIF(TRIM(nombre_cuenta), '')), '-') AS nombre_cuenta,
+        SUM(COALESCE(CAST(debe AS REAL), 0) - COALESCE(CAST(haber AS REAL), 0)) AS saldo
+    FROM x
+    WHERE fecha_eff IS NOT NULL AND TRIM(CAST(fecha_eff AS TEXT)) <> ''
+      AND CAST(fecha_eff AS TEXT) <= :end_iso
+    GROUP BY TRIM(cuenta)
+    """
+    return pd.read_sql(text(sql), db.engine, params={"cid": company_id, "end_iso": end_iso})
+
+
+def query_pyg(company_id: int, start_iso: str, end_iso: str) -> pd.DataFrame:
+    """Movimientos del mes por cuenta para PYG."""
+    sql = f"""
+    WITH x AS (
+        SELECT l.*, {_sql_fecha_eff('l')} AS fecha_eff
+        FROM ledger_entries l
+        WHERE l.company_id = :cid
+    )
+    SELECT
+        TRIM(cuenta) AS cuenta,
+        COALESCE(MAX(NULLIF(TRIM(nombre_cuenta), '')), '-') AS nombre_cuenta,
+        SUM(COALESCE(CAST(debe AS REAL), 0) - COALESCE(CAST(haber AS REAL), 0)) AS monto
+    FROM x
+    WHERE fecha_eff IS NOT NULL AND TRIM(CAST(fecha_eff AS TEXT)) <> ''
+      AND CAST(fecha_eff AS TEXT) >= :start_iso AND CAST(fecha_eff AS TEXT) <= :end_iso
+    GROUP BY TRIM(cuenta)
+    """
+    return pd.read_sql(text(sql), db.engine, params={"cid": company_id, "start_iso": start_iso, "end_iso": end_iso})
+
+
+def query_pyg_ytd(company_id: int, end_iso: str) -> float:
+    """Utilidad acumulada año calendario hasta end_iso (para cuadre EESS)."""
+    from datetime import date
+    try:
+        end = date.fromisoformat(end_iso[:10])
+        start_iso = date(end.year, 1, 1).isoformat()
+    except Exception:
+        return 0.0
+    sql = f"""
+    WITH x AS (
+        SELECT l.*, {_sql_fecha_eff('l')} AS fecha_eff
+        FROM ledger_entries l
+        WHERE l.company_id = :cid
+    )
+    SELECT
+        SUM(COALESCE(CAST(debe AS REAL), 0) - COALESCE(CAST(haber AS REAL), 0)) AS neto
+    FROM x
+    WHERE fecha_eff IS NOT NULL AND TRIM(CAST(fecha_eff AS TEXT)) <> ''
+      AND CAST(fecha_eff AS TEXT) >= :start_iso AND CAST(fecha_eff AS TEXT) <= :end_iso
+      AND SUBSTRING(TRIM(cuenta), 1, 1) IN ('3','4')
+    """
+    df = pd.read_sql(text(sql), db.engine, params={"cid": company_id, "start_iso": start_iso, "end_iso": end_iso})
+    if df.empty or df.iloc[0]["neto"] is None:
+        return 0.0
+    return float(df.iloc[0]["neto"])

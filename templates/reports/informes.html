@@ -3,9 +3,41 @@
 
 {% block content %}
 <div class="card">
-  <h2>Informes de Gestión (Próximamente)</h2>
-  <p>Los informes EESS, PYG y Libro de Ventas requieren subir el archivo <code>clasificacion.xlsx</code> por empresa.</p>
-  <p>Esta funcionalidad se habilitará en la próxima actualización.</p>
-  <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">Volver al Panel</a>
+  <h2>Informes de Gestión</h2>
+  <form method="GET" action="{{ url_for('reports.report_informes') }}">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id" onchange="this.form.submit()">
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+
+  {% if company %}
+  <form method="GET">
+    <input type="hidden" name="company_id" value="{{ company.id }}">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Período</label>
+        <select name="year_month" required>
+          {% for y, m in periods %}
+            <option value="{{ y }}-{{ m }}">{{ "%02d"|format(m) }}-{{ y }}</option>
+          {% else %}
+            <option value="">No hay períodos</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" formaction="{{ url_for('reports.report_eess') }}" class="btn btn-primary">EESS</button>
+      <button type="submit" formaction="{{ url_for('reports.report_pyg') }}" class="btn btn-primary">PYG</button>
+    </div>
+  </form>
+  <p style="font-size:0.85rem; color:#666; margin-top:0.5rem;">
+    Si no hay períodos disponibles, importa datos KAME primero. Si EESS/PYG no funcionan, sube <code>clasificacion.xlsx</code> desde Empresas.
+  </p>
+  {% endif %}
 </div>
 {% endblock %}

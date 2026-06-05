@@ -39,6 +39,7 @@ def create_app(config_class=Config):
         from models.company import Company
         from models.ledger import LedgerEntry
         from models.account_review import AccountReview
+        from models.classification import CompanyClassification
         try:
             if os.environ.get("RESET_DB") == "1":
                 app.logger.warning("RESET_DB=1 -> Borrando todas las tablas...")

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}EESS - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Estado de Situación (EESS) — {{ "%02d"|format(month) }}-{{ year }}</h2>
+  {% if summary %}
+  <p style="background:#34495e; color:#f1c40f; padding:0.5rem; text-align:center; margin:1rem 0;">
+    ACTIVO: {{ "{:,.0f}".format(summary.activo).replace(",", ".") }} |
+    PASIVO: {{ "{:,.0f}".format(summary.pasivo).replace(",", ".") }} |
+    PATRIMONIO: {{ "{:,.0f}".format(summary.patrimonio).replace(",", ".") }} |
+    PYG YTD: {{ "{:,.0f}".format(summary.pyg_ref).replace(",", ".") }}
+    {% if summary.cuadre|abs > 1 %}
+    | Desvío: {{ "{:,.0f}".format(summary.cuadre).replace(",", ".") }}
+    {% else %}
+    | Cuadre OK
+    {% endif %}
+  </p>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr><th>Rubro (N1)</th><th class="num">Saldo</th></tr>
+    </thead>
+    <tbody>
+      {% for _, row in grouped.iterrows() %}
+      <tr>
+        <td>{{ row.detalle_n1 }}</td>
+        <td class="num">{{ row.saldo_fmt }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="2" style="text-align:center; color:#888;">No hay datos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

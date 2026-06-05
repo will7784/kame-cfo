@@ -42,7 +42,9 @@
     <tbody>
       {% for _, row in df.iterrows() %}
       <tr>
-        <td class="mono">{{ row.cuenta }}</td>
+        <td class="mono">
+          <a href="{{ url_for('reports.report_pendientes_cuenta', cuenta=row.cuenta, company_id=company.id, fecha_corte=fecha) }}">{{ row.cuenta }}</a>
+        </td>
         <td>{{ row.nombre_cuenta }}</td>
         <td class="num">{{ "{:,.0f}".format(row.debe).replace(",", ".") if row.debe else '-' }}</td>
         <td class="num">{{ "{:,.0f}".format(row.haber).replace(",", ".") if row.haber else '-' }}</td>
