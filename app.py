@@ -40,6 +40,9 @@ def create_app(config_class=Config):
         from models.ledger import LedgerEntry
         from models.account_review import AccountReview
         try:
+            if os.environ.get("RESET_DB") == "1":
+                app.logger.warning("RESET_DB=1 -> Borrando todas las tablas...")
+                db.drop_all()
             db.create_all()
             if not User.query.first():
                 from werkzeug.security import generate_password_hash
