@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+instance/
+*.db
+*.sqlite3
+migrations/__pycache__/
+*.xlsx
+*.csv
+Kame/

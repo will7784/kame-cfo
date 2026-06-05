@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Ledger - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Importar Ledger</h2>
+  <form method="POST" action="{{ url_for('ledger.import_ledger') }}" enctype="multipart/form-data">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id" required>
+          <option value="">-- Seleccionar --</option>
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }} ({{ c.rut }})</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Archivo Excel/CSV KAME</label>
+        <input type="file" name="file" accept=".xlsx,.xls,.csv" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Importar</button>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>
+    Ledger
+    {% if company %}
+      — {{ company.name }}
+      <a href="{{ url_for('reports.export_ledger_excel', company_id=company.id, search=search) }}" class="btn btn-warning" style="float:right; font-size:0.8rem;">Exportar Excel</a>
+    {% endif %}
+  </h2>
+
+  <form method="GET" action="{{ url_for('ledger.view_ledger') }}">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id">
+          <option value="">Todas</option>
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Buscar</label>
+        <input type="text" name="search" value="{{ search }}" placeholder="Cuenta, nombre, razón social, comprobante...">
+      </div>
+      <button type="submit" class="btn btn-primary">Filtrar</button>
+    </div>
+  </form>
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Comprobante</th>
+        <th>Cuenta</th>
+        <th>Nombre Cuenta</th>
+        <th>Ficha</th>
+        <th>Razón Social</th>
+        <th>Documento</th>
+        <th class="num">Debe</th>
+        <th class="num">Haber</th>
+        <th>Concepto</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in pagination.items %}
+      <tr>
+        <td>{{ e.fecha or '-' }}</td>
+        <td class="mono">{{ e.comprobante or '' }}</td>
+        <td class="mono">{{ e.cuenta }}</td>
+        <td>{{ e.nombre_cuenta or '' }}</td>
+        <td>{{ e.ficha or '' }}</td>
+        <td>{{ e.razon_social or '' }}</td>
+        <td>{{ e.documento or '' }}</td>
+        <td class="num">{{ "{:,.0f}".format(e.debe|float).replace(",", ".") if e.debe else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(e.haber|float).replace(",", ".") if e.haber else '-' }}</td>
+        <td>{{ e.concepto or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" style="text-align:center; color:#888;">No hay registros</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if pagination.pages > 1 %}
+  <div class="pagination">
+    {% if pagination.has_prev %}
+      <a href="{{ url_for('ledger.view_ledger', company_id=company.id if company else '', search=search, page=pagination.prev_num) }}">← Anterior</a>
+    {% endif %}
+
+    {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+      {% if p %}
+        {% if p == pagination.page %}
+          <span class="current">{{ p }}</span>
+        {% else %}
+          <a href="{{ url_for('ledger.view_ledger', company_id=company.id if company else '', search=search, page=p) }}">{{ p }}</a>
+        {% endif %}
+      {% else %}
+        <span>…</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if pagination.has_next %}
+      <a href="{{ url_for('ledger.view_ledger', company_id=company.id if company else '', search=search, page=pagination.next_num) }}">Siguiente →</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <p style="font-size:0.8rem; color:#666; margin-top:0.5rem;">
+    Mostrando {{ pagination.items|length }} de {{ pagination.total }} registros
+    {% if company %}— empresa: {{ company.name }}{% endif %}
+  </p>
+</div>
+{% endblock %}

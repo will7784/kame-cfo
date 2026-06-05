@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Panel - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Panel de Supervisión CFO</h2>
+  <p>Bienvenido, <strong>{{ current_user.username }}</strong>.</p>
+  <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem;">
+    <a href="{{ url_for('companies.list_companies') }}" class="btn btn-primary">Gestionar Empresas</a>
+    <a href="{{ url_for('ledger.view_ledger') }}" class="btn btn-primary">Ver Ledger</a>
+  </div>
+</div>
+{% endblock %}
