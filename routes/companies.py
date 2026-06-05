@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash
 from flask_login import login_required
 from app import db
 from models.company import Company
+from models.ledger import LedgerEntry
 import re
 
 bp = Blueprint("companies", __name__)
@@ -36,4 +37,16 @@ def create_company():
     db.session.add(company)
     db.session.commit()
     flash(f"Empresa {name} creada", "success")
+    return redirect(url_for("companies.list_companies"))
+
+
+@bp.route("/companies/<int:company_id>/delete", methods=["POST"])
+@login_required
+def delete_company(company_id):
+    company = Company.query.get_or_404(company_id)
+    # Borrar ledger entries asociados primero (cascade manual)
+    LedgerEntry.query.filter_by(company_id=company.id).delete()
+    db.session.delete(company)
+    db.session.commit()
+    flash(f"Empresa {company.name} eliminada", "info")
     return redirect(url_for("companies.list_companies"))
