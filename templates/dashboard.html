@@ -5,9 +5,27 @@
 <div class="card">
   <h2>Panel de Supervisión CFO</h2>
   <p>Bienvenido, <strong>{{ current_user.username }}</strong>.</p>
-  <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:1rem;">
-    <a href="{{ url_for('companies.list_companies') }}" class="btn btn-primary">Gestionar Empresas</a>
-    <a href="{{ url_for('ledger.view_ledger') }}" class="btn btn-primary">Ver Ledger</a>
+
+  <h3 style="margin-top:1.5rem; margin-bottom:0.8rem; color:var(--primary);">Reportes Core</h3>
+  <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+    <a href="{{ url_for('reports.report_balance') }}" class="btn btn-primary">Balance 8 Col</a>
+    <a href="{{ url_for('reports.report_mayor') }}" class="btn btn-primary">Libro Mayor</a>
+    <a href="{{ url_for('reports.report_analisis') }}" class="btn btn-primary">Análisis Inteligente</a>
+    <a href="{{ url_for('reports.report_historico') }}" class="btn btn-primary">Histórico Completo</a>
+    <a href="{{ url_for('reports.report_comprobante') }}" class="btn btn-primary">Comprobante</a>
+    <a href="{{ url_for('reports.report_relacion') }}" class="btn btn-primary">Relación Grupos</a>
+    <a href="{{ url_for('reports.list_reviews') }}" class="btn btn-primary">Notas Cuentas</a>
+  </div>
+
+  <h3 style="margin-top:1.5rem; margin-bottom:0.8rem; color:var(--primary);">Gestión</h3>
+  <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+    <a href="{{ url_for('reports.report_informes') }}" class="btn btn-warning">Informes EESS/PYG/Ventas</a>
+  </div>
+
+  <h3 style="margin-top:1.5rem; margin-bottom:0.8rem; color:var(--primary);">Operaciones</h3>
+  <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
+    <a href="{{ url_for('companies.list_companies') }}" class="btn btn-primary">Empresas</a>
+    <a href="{{ url_for('ledger.view_ledger') }}" class="btn btn-primary">Ledger</a>
   </div>
 </div>
 {% endblock %}

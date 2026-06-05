@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Balance - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Balance 8 Columnas</h2>
+  <form method="GET">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id">
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Fecha de Corte (DD-MM-AAAA)</label>
+        <input type="text" name="fecha" value="{{ fecha }}" placeholder="31-12-2025">
+      </div>
+      <button type="submit" class="btn btn-primary">Generar</button>
+    </div>
+  </form>
+
+  {% if summary %}
+  <p style="background:#34495e; color:#f1c40f; padding:0.5rem; text-align:center; margin:1rem 0;">
+    ACTIVO: {{ "{:,.0f}".format(summary.activo).replace(",", ".") }} |
+    PASIVO: {{ "{:,.0f}".format(summary.pasivo).replace(",", ".") }} |
+    {% set diff = summary.ganancia - summary.perdida %}
+    {{ "UTILIDAD" if diff >= 0 else "PÉRDIDA" }}: {{ "{:,.0f}".format(diff|abs).replace(",", ".") }}
+    <a href="{{ url_for('reports.report_balance_excel', company_id=company.id, fecha=fecha) }}" class="btn btn-warning" style="float:right; font-size:0.8rem; margin-top:-2px;">Exportar Excel</a>
+  </p>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Cuenta</th><th>Nombre</th><th class="num">Debe</th><th class="num">Haber</th>
+        <th class="num">Activo</th><th class="num">Pasivo</th><th class="num">Pérdida</th><th class="num">Ganancia</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for _, row in df.iterrows() %}
+      <tr>
+        <td class="mono">{{ row.cuenta }}</td>
+        <td>{{ row.nombre_cuenta }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.debe).replace(",", ".") if row.debe else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.haber).replace(",", ".") if row.haber else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.activo).replace(",", ".") if row.activo else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.pasivo).replace(",", ".") if row.pasivo else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.perdida).replace(",", ".") if row.perdida else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.ganancia).replace(",", ".") if row.ganancia else '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center; color:#888;">No hay datos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

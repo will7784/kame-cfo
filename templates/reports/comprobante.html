@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Comprobante - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Comprobante Contable</h2>
+  <form method="GET">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id">
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Comprobante (ej: e3983)</label>
+        <input type="text" name="busqueda" value="{{ busqueda }}" placeholder="e3983">
+      </div>
+      <button type="submit" class="btn btn-primary">Buscar</button>
+    </div>
+  </form>
+
+  {% if summary %}
+  <p style="background:#34495e; color:#f1c40f; padding:0.5rem; text-align:center; margin:1rem 0;">
+    TOTAL ASIENTO: {{ "{:,.0f}".format(summary.total).replace(",", ".") }}
+    <a href="{{ url_for('reports.report_comprobante_excel', company_id=company.id, busqueda=busqueda) }}" class="btn btn-warning" style="float:right; font-size:0.8rem; margin-top:-2px;">Exportar Excel</a>
+  </p>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Comprobante</th><th>Cuenta</th><th>Nombre</th>
+        <th class="num">Debe</th><th class="num">Haber</th><th>Concepto</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if df is not none %}
+      {% for _, row in df.iterrows() %}
+      <tr>
+        <td>{{ row.fecha or '-' }}</td>
+        <td class="mono">{{ row.comprobante }}</td>
+        <td class="mono">{{ row.cuenta }}</td>
+        <td>{{ row.nombre_cuenta }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.debe).replace(",", ".") if row.debe else '-' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.haber).replace(",", ".") if row.haber else '-' }}</td>
+        <td>{{ row.concepto or '' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center; color:#888;">No hay datos</td></tr>
+      {% endfor %}
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

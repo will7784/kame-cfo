@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Notas Cuentas - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Notas de Cuentas</h2>
+  <form method="GET" action="{{ url_for('reports.list_reviews') }}">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id" onchange="this.form.submit()">
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </form>
+
+  {% if company %}
+  <form method="POST" action="{{ url_for('reports.create_review') }}">
+    <input type="hidden" name="company_id" value="{{ company.id }}">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Cuenta</label>
+        <input type="text" name="cuenta" placeholder="1.01.01.04" required>
+      </div>
+      <div class="form-group">
+        <label>Nota</label>
+        <input type="text" name="nota" placeholder="Revisado OK" required>
+      </div>
+      <div class="form-group" style="display:flex; align-items:center; gap:0.5rem;">
+        <input type="checkbox" name="aprobado" id="aprobado" style="width:auto;">
+        <label for="aprobado" style="margin-bottom:0;">Aprobado</label>
+      </div>
+      <button type="submit" class="btn btn-primary">Guardar</button>
+    </div>
+  </form>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr><th>Cuenta</th><th>Aprobado</th><th>Nota</th><th>Usuario</th><th>Fecha</th><th>Acción</th></tr>
+    </thead>
+    <tbody>
+      {% for r in reviews %}
+      <tr>
+        <td class="mono">{{ r.cuenta }}</td>
+        <td>{{ "Sí" if r.aprobado else "No" }}</td>
+        <td>{{ r.nota }}</td>
+        <td>{{ r.usuario or '' }}</td>
+        <td>{{ r.updated_at }}</td>
+        <td>
+          <form method="POST" action="{{ url_for('reports.delete_review', review_id=r.id) }}" style="display:inline;" onsubmit="return confirm('¿Eliminar esta nota?')">
+            <button type="submit" class="btn btn-danger" style="font-size:0.8rem;">Eliminar</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center; color:#888;">No hay notas registradas</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

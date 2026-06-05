@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Informes de Gestión - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Informes de Gestión (Próximamente)</h2>
+  <p>Los informes EESS, PYG y Libro de Ventas requieren subir el archivo <code>clasificacion.xlsx</code> por empresa.</p>
+  <p>Esta funcionalidad se habilitará en la próxima actualización.</p>
+  <a href="{{ url_for('main.dashboard') }}" class="btn btn-primary">Volver al Panel</a>
+</div>
+{% endblock %}

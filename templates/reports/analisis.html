@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Análisis Inteligente - KAME CFO{% endblock %}
+
+{% block content %}
+<div class="card">
+  <h2>Análisis Inteligente (Pendientes)</h2>
+  <form method="GET">
+    <div class="toolbar">
+      <div class="form-group">
+        <label>Empresa</label>
+        <select name="company_id">
+          {% for c in companies %}
+            <option value="{{ c.id }}" {% if company and company.id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Buscar (nombre, RUT, ficha, concepto)</label>
+        <input type="text" name="busqueda" value="{{ busqueda }}" placeholder="* para todas">
+      </div>
+      <button type="submit" class="btn btn-primary">Generar</button>
+    </div>
+  </form>
+
+  {% if summary %}
+  <p style="background:#34495e; color:#f1c40f; padding:0.5rem; text-align:center; margin:1rem 0;">
+    SALDO PENDIENTE TOTAL: {{ "{:,.0f}".format(summary.saldo).replace(",", ".") }}
+    <a href="{{ url_for('reports.report_analisis_excel', company_id=company.id, busqueda=busqueda) }}" class="btn btn-warning" style="float:right; font-size:0.8rem; margin-top:-2px;">Exportar Excel</a>
+  </p>
+  {% endif %}
+
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Comprobante</th><th>Cuenta</th><th>Nombre</th>
+        <th>Ficha</th><th>Razón Social</th><th>Documento</th><th class="num">Saldo</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for _, row in df.iterrows() %}
+      <tr>
+        <td>{{ row.fecha or '-' }}</td>
+        <td class="mono">{{ row.comprobante }}</td>
+        <td class="mono">{{ row.cuenta }}</td>
+        <td>{{ row.nombre_cuenta }}</td>
+        <td>{{ row.ficha or '' }}</td>
+        <td>{{ row.razon_social or '' }}</td>
+        <td>{{ row.documento or row.doc_referencia or '' }}</td>
+        <td class="num">{{ "{:,.0f}".format(row.saldo).replace(",", ".") if row.saldo else '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" style="text-align:center; color:#888;">No hay datos</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

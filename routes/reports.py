@@ -1,105 +1,370 @@
 import io
-from flask import Blueprint, request, send_file, abort
+import re
+import pandas as pd
+from flask import Blueprint, request, render_template, send_file, flash, redirect, url_for, abort
 from flask_login import login_required
 from app import db
 from models.company import Company
-from models.ledger import LedgerEntry
-import xlsxwriter
+from models.account_review import AccountReview
+from reports.queries import (
+    query_balance,
+    query_mayor,
+    query_analisis_inteligente,
+    query_historico,
+    query_comprobante,
+    query_relacion_grupos,
+    query_pendientes_cuenta,
+)
+from reports.excel import (
+    export_balance_excel,
+    export_mayor_excel,
+    export_analisis_excel,
+    export_historico_excel,
+    export_comprobante_excel,
+    export_relacion_excel,
+    export_pendientes_excel,
+    export_generic_excel,
+)
 
 bp = Blueprint("reports", __name__)
 
 
-@bp.route("/reports/ledger-excel")
+def _get_company(company_id):
+    return Company.query.get(company_id) if company_id else None
+
+
+def _fmt_miles(n):
+    try:
+        v = float(n)
+        if abs(v) < 0.5:
+            return "-"
+        s = f"{abs(v):,.0f}".replace(",", ".")
+        return f"({s})" if v < 0 else s
+    except Exception:
+        return "-"
+
+
+# ---------- BALANCE ----------
+
+@bp.route("/reports/balance", methods=["GET"])
 @login_required
-def export_ledger_excel():
+def report_balance():
     company_id = request.args.get("company_id", type=int)
-    search = request.args.get("search", "").strip()
+    fecha = request.args.get("fecha", "").strip()
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    if not fecha:
+        from datetime import datetime
+        fecha = datetime.now().strftime("%d-%m-%Y")
+    try:
+        fecha_db = __import__("datetime").datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%d")
+    except Exception:
+        fecha_db = __import__("datetime").datetime.now().strftime("%Y-%m-%d")
+
+    df = query_balance(company_id, fecha_db)
+    if not df.empty:
+        df["debe"] = pd.to_numeric(df["debe"], errors="coerce").fillna(0.0)
+        df["haber"] = pd.to_numeric(df["haber"], errors="coerce").fillna(0.0)
+        def classify(row):
+            digit = str(row["cuenta"])[0]
+            net = float(row["debe"]) - float(row["haber"])
+            a = p = per = gan = 0
+            if digit in ["1", "2"]:
+                if net >= 0:
+                    a = net
+                else:
+                    p = abs(net)
+            else:
+                if net >= 0:
+                    per = net
+                else:
+                    gan = abs(net)
+            return pd.Series([a, p, per, gan])
+        df[["activo", "pasivo", "perdida", "ganancia"]] = df.apply(classify, axis=1)
+        summary = {
+            "activo": float(df["activo"].sum()),
+            "pasivo": float(df["pasivo"].sum()),
+            "perdida": float(df["perdida"].sum()),
+            "ganancia": float(df["ganancia"].sum()),
+        }
+    else:
+        summary = None
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/balance.html", df=df, company=company, companies=companies, fecha=fecha, summary=summary)
+
+
+@bp.route("/reports/balance/excel")
+@login_required
+def report_balance_excel():
+    company_id = request.args.get("company_id", type=int)
+    fecha = request.args.get("fecha", "").strip()
+    if not company_id or not fecha:
+        abort(400)
+    try:
+        fecha_db = __import__("datetime").datetime.strptime(fecha, "%d-%m-%Y").strftime("%Y-%m-%d")
+    except Exception:
+        fecha_db = fecha
+    company = _get_company(company_id)
+    output = export_balance_excel(company_id, company, fecha_db)
+    if output is None:
+        flash("Sin datos", "warning")
+        return redirect(url_for("reports.report_balance", company_id=company_id, fecha=fecha))
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"balance_{company.slug}_{fecha_db}.xlsx")
+
+
+# ---------- LIBRO MAYOR ----------
+
+@bp.route("/reports/mayor", methods=["GET"])
+@login_required
+def report_mayor():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    df = query_mayor(company_id, busqueda)
+    if not df.empty:
+        df["debe"] = pd.to_numeric(df["debe"], errors="coerce").fillna(0.0)
+        df["haber"] = pd.to_numeric(df["haber"], errors="coerce").fillna(0.0)
+        df["saldo"] = (df["debe"] - df["haber"]).cumsum()
+        summary = {
+            "debe": float(df["debe"].sum()),
+            "haber": float(df["haber"].sum()),
+            "saldo": float(df["debe"].sum() - df["haber"].sum()),
+        }
+    else:
+        summary = None
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/mayor.html", df=df, company=company, companies=companies, busqueda=busqueda, summary=summary)
+
+
+@bp.route("/reports/mayor/excel")
+@login_required
+def report_mayor_excel():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
     if not company_id:
         abort(400)
+    company = _get_company(company_id)
+    output = export_mayor_excel(company_id, company, busqueda)
+    if output is None:
+        flash("Sin datos", "warning")
+        return redirect(url_for("reports.report_mayor", company_id=company_id, busqueda=busqueda))
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"mayor_{company.slug}.xlsx")
 
-    company = Company.query.get(company_id)
-    if not company:
-        abort(404)
 
-    query = LedgerEntry.query.filter_by(company_id=company_id)
-    if search:
-        like = f"%{search}%"
-        query = query.filter(
-            db.or_(
-                LedgerEntry.cuenta.ilike(like),
-                LedgerEntry.nombre_cuenta.ilike(like),
-                LedgerEntry.razon_social.ilike(like),
-                LedgerEntry.comprobante.ilike(like),
-            )
-        )
+# ---------- ANÁLISIS INTELIGENTE ----------
 
-    entries = query.order_by(LedgerEntry.fecha.desc().nullslast(), LedgerEntry.id).all()
+@bp.route("/reports/analisis", methods=["GET"])
+@login_required
+def report_analisis():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    df = query_analisis_inteligente(company_id, busqueda)
+    summary = None
+    if not df.empty and "saldo" in df.columns:
+        summary = {"saldo": float(df["saldo"].sum())}
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/analisis.html", df=df, company=company, companies=companies, busqueda=busqueda, summary=summary)
 
-    output = io.BytesIO()
-    workbook = xlsxwriter.Workbook(output, {"in_memory": True})
 
-    # Formatos
-    f_corp = workbook.add_format({"bold": True, "font_size": 14, "align": "center"})
-    f_info = workbook.add_format({"bold": True, "font_size": 10, "align": "center"})
-    f_header = workbook.add_format({"bold": True, "bg_color": "#2C3E50", "font_color": "white", "border": 1})
-    f_num = workbook.add_format({"num_format": '#,##0;[Red](#,##0)', "border": 1})
-    f_text = workbook.add_format({"border": 1})
-    f_total = workbook.add_format({"bold": True, "num_format": '#,##0;[Red](#,##0)', "border": 1, "bg_color": "#F2F2F2"})
-    f_total_text = workbook.add_format({"bold": True, "border": 1, "bg_color": "#F2F2F2"})
+@bp.route("/reports/analisis/excel")
+@login_required
+def report_analisis_excel():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        abort(400)
+    company = _get_company(company_id)
+    output = export_analisis_excel(company_id, company, busqueda)
+    if output is None:
+        flash("Sin datos", "warning")
+        return redirect(url_for("reports.report_analisis", company_id=company_id, busqueda=busqueda))
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"analisis_{company.slug}.xlsx")
 
-    ws = workbook.add_worksheet("Ledger")
-    ws.freeze_panes(6, 0)
 
-    # Cabecera corporativa
-    headers = ["Fecha", "Comprobante", "Cuenta", "Nombre Cuenta", "Ficha", "Razón Social", "Documento", "Debe", "Haber", "Concepto"]
-    num_cols = len(headers)
-    col_letter = xlsxwriter.utility.xl_col_to_name(num_cols - 1)
-    ws.merge_range(f"A1:{col_letter}1", "REPORTE LEDGER CONTABLE", f_corp)
-    ws.merge_range(f"A2:{col_letter}2", f"EMPRESA: {company.name}", f_info)
-    ws.merge_range(f"A3:{col_letter}3", f"RUT: {company.rut}", f_info)
-    ws.merge_range(f"A4:{col_letter}4", f"REGISTROS: {len(entries)}", f_info)
+# ---------- HISTÓRICO COMPLETO ----------
 
-    # Encabezados de tabla
-    for i, h in enumerate(headers):
-        ws.write(5, i, h, f_header)
-        ws.set_column(i, i, 18)
-    ws.set_column(9, 9, 40)  # Concepto más ancho
+@bp.route("/reports/historico", methods=["GET"])
+@login_required
+def report_historico():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    df = query_historico(company_id, busqueda)
+    summary = None
+    if not df.empty:
+        summary = {"registros": len(df)}
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/historico.html", df=df, company=company, companies=companies, busqueda=busqueda, summary=summary)
 
-    # Datos
-    t_debe = t_haber = 0
-    for row_num, e in enumerate(entries):
-        r = row_num + 6
-        ws.write(r, 0, str(e.fecha) if e.fecha else "", f_text)
-        ws.write(r, 1, e.comprobante or "", f_text)
-        ws.write(r, 2, e.cuenta or "", f_text)
-        ws.write(r, 3, e.nombre_cuenta or "", f_text)
-        ws.write(r, 4, e.ficha or "", f_text)
-        ws.write(r, 5, e.razon_social or "", f_text)
-        ws.write(r, 6, e.documento or "", f_text)
-        ws.write(r, 7, float(e.debe or 0), f_num)
-        ws.write(r, 8, float(e.haber or 0), f_num)
-        ws.write(r, 9, e.concepto or "", f_text)
-        t_debe += float(e.debe or 0)
-        t_haber += float(e.haber or 0)
 
-    # Totales
-    total_row = 6 + len(entries)
-    ws.write(total_row, 0, "TOTAL", f_total_text)
-    for c in range(1, 7):
-        ws.write_blank(total_row, c, None, f_total_text)
-    ws.write(total_row, 7, t_debe, f_total)
-    ws.write(total_row, 8, t_haber, f_total)
-    ws.write_blank(total_row, 9, None, f_total_text)
+@bp.route("/reports/historico/excel")
+@login_required
+def report_historico_excel():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        abort(400)
+    company = _get_company(company_id)
+    output = export_historico_excel(company_id, company, busqueda)
+    if output is None:
+        flash("Sin datos", "warning")
+        return redirect(url_for("reports.report_historico", company_id=company_id, busqueda=busqueda))
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"historico_{company.slug}.xlsx")
 
-    # Autofiltro
-    ws.autofilter(5, 0, total_row, num_cols - 1)
 
-    workbook.close()
-    output.seek(0)
+# ---------- COMPROBANTE ----------
 
-    return send_file(
-        output,
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        as_attachment=True,
-        download_name=f"ledger_{company.slug}.xlsx",
+@bp.route("/reports/comprobante", methods=["GET"])
+@login_required
+def report_comprobante():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "").strip()
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    df = None
+    summary = None
+    if busqueda:
+        df = query_comprobante(company_id, busqueda)
+        if not df.empty:
+            summary = {"total": float(df["debe"].sum())}
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/comprobante.html", df=df, company=company, companies=companies, busqueda=busqueda, summary=summary)
+
+
+@bp.route("/reports/comprobante/excel")
+@login_required
+def report_comprobante_excel():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "").strip()
+    if not company_id or not busqueda:
+        abort(400)
+    company = _get_company(company_id)
+    output = export_comprobante_excel(company_id, company, busqueda)
+    if output is None:
+        flash("Sin datos", "warning")
+        return redirect(url_for("reports.report_comprobante", company_id=company_id, busqueda=busqueda))
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"comprobante_{company.slug}.xlsx")
+
+
+# ---------- RELACIÓN CONCEPTOS/GRUPOS ----------
+
+@bp.route("/reports/relacion", methods=["GET"])
+@login_required
+def report_relacion():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    df = query_relacion_grupos(company_id, busqueda)
+    if not df.empty:
+        df["saldo"] = pd.to_numeric(df["debe"], errors="coerce").fillna(0) - pd.to_numeric(df["haber"], errors="coerce").fillna(0)
+        summary = {
+            "debe": float(df["debe"].sum()),
+            "haber": float(df["haber"].sum()),
+            "saldo": float(df["saldo"].sum()),
+            "registros": len(df),
+        }
+    else:
+        summary = None
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/relacion.html", df=df, company=company, companies=companies, busqueda=busqueda, summary=summary)
+
+
+@bp.route("/reports/relacion/excel")
+@login_required
+def report_relacion_excel():
+    company_id = request.args.get("company_id", type=int)
+    busqueda = request.args.get("busqueda", "*").strip() or "*"
+    if not company_id:
+        abort(400)
+    company = _get_company(company_id)
+    output = export_relacion_excel(company_id, company, busqueda)
+    if output is None:
+        flash("Sin datos", "warning")
+        return redirect(url_for("reports.report_relacion", company_id=company_id, busqueda=busqueda))
+    return send_file(output, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True, download_name=f"relacion_{company.slug}.xlsx")
+
+
+# ---------- NOTAS CUENTAS (ACCOUNT REVIEWS) ----------
+
+@bp.route("/reviews", methods=["GET"])
+@login_required
+def list_reviews():
+    company_id = request.args.get("company_id", type=int)
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    reviews = AccountReview.query.filter_by(company_id=company_id).order_by(AccountReview.updated_at.desc()).all()
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reviews/list.html", reviews=reviews, company=company, companies=companies)
+
+
+@bp.route("/reviews/new", methods=["POST"])
+@login_required
+def create_review():
+    company_id = request.form.get("company_id", type=int)
+    cuenta = request.form.get("cuenta", "").strip()
+    nota = request.form.get("nota", "").strip()
+    aprobado = request.form.get("aprobado") == "on"
+    if not company_id or not cuenta or len(nota) < 2:
+        flash("Cuenta y nota son obligatorios (mínimo 2 caracteres)", "warning")
+        return redirect(url_for("reports.list_reviews", company_id=company_id))
+    review = AccountReview(
+        company_id=company_id,
+        cuenta=cuenta,
+        aprobado=aprobado,
+        nota=nota,
+        usuario=__import__("flask_login").current_user.username,
     )
+    db.session.add(review)
+    db.session.commit()
+    flash("Nota guardada", "success")
+    return redirect(url_for("reports.list_reviews", company_id=company_id))
+
+
+@bp.route("/reviews/<int:review_id>/delete", methods=["POST"])
+@login_required
+def delete_review(review_id):
+    review = AccountReview.query.get_or_404(review_id)
+    cid = review.company_id
+    db.session.delete(review)
+    db.session.commit()
+    flash("Nota eliminada", "info")
+    return redirect(url_for("reports.list_reviews", company_id=cid))
+
+
+# ---------- INFORMES (placeholder para EESS/PYG/Ventas) ----------
+
+@bp.route("/reports/informes", methods=["GET"])
+@login_required
+def report_informes():
+    company_id = request.args.get("company_id", type=int)
+    if not company_id:
+        flash("Selecciona una empresa", "warning")
+        return redirect(url_for("main.dashboard"))
+    company = _get_company(company_id)
+    companies = Company.query.order_by(Company.name).all()
+    return render_template("reports/informes.html", company=company, companies=companies)
