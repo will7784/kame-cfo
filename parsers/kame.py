@@ -90,21 +90,21 @@ def parse_kame_excel(file_path, sheet_name=0):
     for _, row in df.iterrows():
         fecha_val = row.get("fecha")
         venc_val = row.get("vencimiento")
-        fecha_obj = None
+        fecha_str = None
         if pd.notna(fecha_val) and str(fecha_val).strip() not in ("", "nan", "None", "NaT"):
             try:
-                fecha_obj = datetime.strptime(str(fecha_val), "%Y-%m-%d").date()
+                fecha_str = datetime.strptime(str(fecha_val), "%Y-%m-%d").strftime("%Y-%m-%d")
             except Exception:
-                fecha_obj = None
-        venc_obj = None
+                fecha_str = None
+        venc_str = None
         if pd.notna(venc_val) and str(venc_val).strip() not in ("", "nan", "None", "NaT"):
             try:
-                venc_obj = datetime.strptime(str(venc_val), "%Y-%m-%d").date()
+                venc_str = datetime.strptime(str(venc_val), "%Y-%m-%d").strftime("%Y-%m-%d")
             except Exception:
-                venc_obj = None
+                venc_str = None
 
         record = {
-            "fecha": fecha_obj,
+            "fecha": fecha_str,
             "comprobante": _safe_str(row.get("comprobante")),
             "cuenta": _safe_str(row.get("cuenta")),
             "nombre_cuenta": _safe_str(row.get("nombre_cuenta")),
@@ -117,7 +117,7 @@ def parse_kame_excel(file_path, sheet_name=0):
             "concepto": _safe_str(row.get("concepto")),
             "proyecto": _safe_str(row.get("proyecto")),
             "unidad_de_negocio": _safe_str(row.get("unidad_de_negocio")),
-            "vencimiento": venc_obj,
+            "vencimiento": venc_str,
         }
         records.append(record)
 
