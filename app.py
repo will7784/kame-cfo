@@ -39,12 +39,15 @@ def create_app(config_class=Config):
         from models.company import Company
         from models.ledger import LedgerEntry
         from models.account_review import AccountReview
-        db.create_all()
-        if not User.query.first():
-            from werkzeug.security import generate_password_hash
-            admin = User(username="will", password_hash=generate_password_hash("7784"))
-            db.session.add(admin)
-            db.session.commit()
+        try:
+            db.create_all()
+            if not User.query.first():
+                from werkzeug.security import generate_password_hash
+                admin = User(username="will", password_hash=generate_password_hash("7784"))
+                db.session.add(admin)
+                db.session.commit()
+        except Exception as e:
+            app.logger.warning(f"No se pudo conectar a la base de datos al arrancar: {e}")
 
     return app
 
